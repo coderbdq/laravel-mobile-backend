@@ -97,7 +97,14 @@ class OrderController extends Controller
             ->leftJoin('product as p', 'p.id', '=', 'od.product_id')
             ->whereIn('od.order_id', $orders->pluck('id'))
             ->get()
-            ->groupBy('order_id'); // 🔹 Trả về Collection, không còn lỗi array nữa
+            ->map(function($item) {
+                // ✅ FIX: Tạo full URL cho ảnh
+                $item->product_image = $item->product_image 
+                    ? url('images/products/' . $item->product_image)
+                    : url('images/products/placeholder.jpg'); // fallback image
+                return $item;
+            })
+            ->groupBy('order_id');
 
         // 🧩 Gộp đơn hàng + sản phẩm
         $data = $orders->map(function ($o) use ($items) {
@@ -110,11 +117,71 @@ class OrderController extends Controller
                 'total_price' => $o->total_price,
                 'created_at'  => $o->created_at,
                 'items'       => isset($items[$o->id])
-                    ? $items[$o->id]->values() // ✅ `$items[$id]` là Collection
-                    : [], // tránh lỗi khi không có items
+                    ? $items[$o->id]->values()
+                    : [],
             ];
         });
 
         return response()->json(['data' => $data], 200);
+    }
+
+    /**
+     * 📦 GET /api/order-detail/{orderid}
+     * Lấy chi tiết 1 đơn hàng
+     */
+    public function detail($orderid)
+    {
+        $order = DB::table('order as o')
+            ->select(
+                'o.id',
+                'o.user_id',
+                'o.name',
+                'o.email',
+                'o.phone',
+                'o.address',
+                'o.created_at',
+                DB::raw('COALESCE(SUM(od.quantity * od.price),0) as total_price')
+            )
+            ->leftJoin('orderdetail as od', 'od.order_id', '=', 'o.id')
+            ->where('o.id', $orderid)
+            ->groupBy('o.id', 'o.user_id', 'o.name', 'o.email', 'o.phone', 'o.address', 'o.created_at')
+            ->first();
+
+        if (!$order) {
+            return response()->json(['error' => 'Order not found'], 404);
+        }
+
+        // Lấy danh sách sản phẩm
+        $items = DB::table('orderdetail as od')
+            ->select(
+                'od.product_id',
+                'od.quantity',
+                'od.price',
+                'p.name as product_name',
+                'p.image_url as product_image'
+            )
+            ->leftJoin('product as p', 'p.id', '=', 'od.product_id')
+            ->where('od.order_id', $orderid)
+            ->get()
+            ->map(function($item) {
+                // ✅ FIX: Tạo full URL cho ảnh
+                $item->product_image = $item->product_image 
+                    ? url('images/products/' . $item->product_image)
+                    : url('images/products/placeholder.jpg');
+                return $item;
+            });
+
+        return response()->json([
+            'data' => [
+                'id'          => $order->id,
+                'name'        => $order->name,
+                'email'       => $order->email,
+                'phone'       => $order->phone,
+                'address'     => $order->address,
+                'total_price' => $order->total_price,
+                'created_at'  => $order->created_at,
+                'items'       => $items,
+            ]
+        ], 200);
     }
 }

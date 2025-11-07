@@ -19,6 +19,7 @@ Route::get('products/{id}', [ProductController::class, 'apiShow']);
 // ✅ Đơn hàng (mobile API)
 Route::post('orders', [OrderController::class, 'apiStore']);
 Route::get('order-list/{userid}', [OrderController::class, 'list']);
+Route::get('order-detail/{orderid}', [OrderController::class, 'detail']);
 
 // ✅ Auth
 Route::post('register', [AuthController::class, 'register']);
